@@ -9,7 +9,7 @@
     using System.ServiceModel.Channels;
     using System.ServiceModel.Web;
     using System.IdentityModel.Claims;
-    
+    using System.ServiceModel.Activation;
     using IO;
     using Nancy.Bootstrapper;
     using Nancy.Extensions;
@@ -19,6 +19,7 @@
     /// </summary>
     [ServiceContract]
     [ServiceBehavior(InstanceContextMode = InstanceContextMode.Single, ConcurrencyMode = ConcurrencyMode.Multiple)]
+    [AspNetCompatibilityRequirements(RequirementsMode = AspNetCompatibilityRequirementsMode.Allowed)]
     public class NancyWcfGenericService : IDisposable
     {
         private readonly INancyEngine engine;
@@ -45,7 +46,7 @@
         }
         
         /// <summary>
-        /// Handels an incoming request with Nancy.
+        /// Handles an incoming request with Nancy.
         /// </summary>
         /// <param name="requestBody">The body of the incoming request.</param>
         /// <returns>A <see cref="Message"/> instance.</returns>
@@ -86,16 +87,7 @@
                 ip = ((RemoteEndpointMessageProperty)remoteEndpointProperty).Address;
             }
 
-            var baseUri =
-                GetUrlAndPathComponents(webRequest.UriTemplateMatch.BaseUri);
-
-            if(!baseUri.OriginalString.EndsWith("/"))
-            {
-                baseUri = new Uri(string.Concat(baseUri.OriginalString, "/"));
-            }
-
-            var relativeUri =
-                baseUri.MakeRelativeUri(GetUrlAndPathComponents(webRequest.UriTemplateMatch.RequestUri));
+            var relativeUri = GetRelativeUri(webRequest);
 
             var expectedRequestLength =
                 GetExpectedRequestLength(webRequest.Headers.ToDictionary());
@@ -130,6 +122,27 @@
                 webRequest.Headers.ToDictionary(),
                 ip, 
                 certificate);
+        }
+
+        private static Uri GetRelativeUri(IncomingWebRequestContext webRequest)
+        {
+            var baseUri = GetUrlAndPathComponents(webRequest.UriTemplateMatch.BaseUri);
+            var requestUri = GetUrlAndPathComponents(webRequest.UriTemplateMatch.RequestUri);
+            //We only want to compare the relative path url so we make sure the host and scheme is the same
+            var uriBuilder = new UriBuilder(baseUri) 
+            {
+                Host = requestUri.Host,
+                Scheme = requestUri.Scheme
+            };
+            baseUri = uriBuilder.Uri;
+
+            if (!baseUri.OriginalString.EndsWith("/"))
+            {
+                baseUri = new Uri(string.Concat(baseUri.OriginalString, "/"));
+            }
+
+            var relativeUri = baseUri.MakeRelativeUri(requestUri);
+            return relativeUri;
         }
 
         private static long GetExpectedRequestLength(IDictionary<string, IEnumerable<string>> incomingHeaders)
